@@ -43,6 +43,21 @@
 
 
 ## 추가 학습 내용
-### lombok
+### Lombok
+- 특징
+  - 컴파일 시점에 코드 추가
+  - 별도의 라이브러리 추가 설치 필요
+- 장점
+  - 어노테이션을 통한 코드 자동 생성으로 생산성, 편의성 증가
+  - Code의 길이가 줄어들어 가독성, 유지보수성 향상
+  - Builder 패턴 적용, Log 생성 등의 편의성
 - `@Data`, `@Setter`, `@AllArgsConstructor` 지양
-- 양방향 연관관계 시 `@ToString` 순환 참조 문제 -> DTO에서만 사용하기
+  - `@Data` : `@ToString`, `@Getter`, `@Setter`, `@EqualsAndHashCode`, `@RequiredArgsConstructor`을 모두 포함하는 강력한 어노테이션
+    - setter 남용으로 안정성 보장 X : 변경을 허용치 않는 필드도 setter 생성됨
+    - 양방향 연관관계에서 `@ToString` 사용 시 순환 참조 문제 : StackOverFlow 발생
+      - `@ToString(of = {필드명, 필드명})`와 같이 직접 필드 등록 또는 문제 필드에 `@ToString.Exclude` 작성해 제외 
+    - Mutable 객체에 `@EqualsAndHashCode` 파라미터 없이 사용 시 문제 : 필드값 변경 후 객체 비교 시 다른 객체로 인식 -> Immutable 객체 외엔 사용 지 or `@EqualsAndHashCode(of ={"필드명"})` 사용
+    - `@RequiredArgsConstructor`으로 인한 문제 : 선언된 인스턴스 멤버 순서 변경 시 lombok이 생성자의 파라미터 순서를 필드 선언 순서에 따라 변형 -> 리팩토링 동작 없이 실제 입력된 값 바뀌어 들어가는 문제 발생
+  - `@AllArgsConstructor` : 클래스에 존재하는 모든 필드 포함하는 생성자 자동 생성
+    - 자동으로 생성되어 제어 불가
+    - 필드 순서 변경되어도 타입 일치하면 컴파일 시점에 에러 발생하지 않음
