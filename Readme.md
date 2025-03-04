@@ -86,6 +86,82 @@
     - When: 시나리오 행동 진행, 보통 코드 한줄(실행하는 메서드)
     - Then: 시나리오 진행에 대한 결과 명시, 검증
 
+## Spring & JPA 기반 테스트
+### 레이어드 아키텍처(Layered Architecture)
+- 관심사 분리 
+- 3계층
+  - Presentation Layer
+  - Business Layer
+  - Persistence Layer
+  - `Presentation layer(UI) <-> Business Layer <-> Persistence layer <-> DB`
+- 통합테스트
+  - 여러 모듈이 협력하는 기능을 통합적으로 검증하는 테스트
+  - 일반적으로 작은 범위의 단위 테스트만으로는 기능 전체의 신뢰성 보장 불가
+  - 풍부한 단위 테스트 & 큰 기능 단위 검증하는 통합테스트 
+### Spring
+- 주요개념
+  - IoC(Inversion of Control)
+  - DI(Dependency Injection)
+  - AOP(Aspect Oriented Programming): 스프링에서 프록시 사용해서 구현
+### JPA(Java Persistence API)
+- ORM(Object-Relational Mapping)
+  - 객체지향 패러다임 != 관계형 DB
+    - 패러다임간의 불일치 -> 기존 개발자가 직접 mapping하며 비지니스로직에 집중하기 힘듦 -> 자동으로 mapping해주도록
+- JPA
+  - Java 진영의 ORM 기술 표준
+  - 인터페이스로, 보통 Hibernate 구현체 많이 사용
+  - 반복적 CRUD SQL 생성 및 실행, 여러 부가기능 제공
+  - 편리하지만 직접 쿼리 작성 안하기때문에 어떤식으로 쿼리 만들어지고 실행되는지 명확하게 이해해야함
+  - Spring 진영에서는 JPA를 한번 더 추상화한 Spring Data JPA 제공
+    - QueryDSL과 조합하여 많이 사용(타입체크, 동적쿼리)
+- 주로 사용되는 어노테이션
+  - 테이블과 객체 매핑: @Entity, @Id, @Column
+  - 두 테이블(객체)간 연관관계: @ManyToOne, @OneToMany, @OneToOne, @ManyToMany
+### test 진행하기
+#### 기본 세팅
+- 엔티티 별 생성, 수정일 설정
+  - `@EnableJpaAuditing`: 엔티티 객체 생성되거나 수정되었을 때 자동으로 값 등록 가능, Application 클래스에 추가
+  - BaseEntity 추상 클래스 생성 : 생성일, 수정일 관리
+  ```java
+  @Getter
+  @MappedSuperclass
+  @EntityListeners(AuditingEntityListener.class)
+  public abstract class BaseEntity {
+  
+      @CreatedDate
+      private LocalDateTime createdDateTime;
+  
+      @LastModifiedDate
+      private LocalDateTime modifiedDateTime;
+  
+  }
+  ```
+    - `@MappedSuperclass`: 공통 맵핑 정보가 필요할 때, 부모 클래스에서 선언하고 속성 상속 받아서 사용
+    - `@EntityListeners(AuditingEntityListener::class)`: 엔티티에 이벤트 발생 시 관련 코드 실행
+- `application.yml`
+  - ddl-auto 여부, data.sql 실행 여부 등 profile 별 설정
+  - `@ActiveProfiles(profile명)`으로 원하는 profile 환경에서 진행 가능
+#### Persistence Layer
+- Data Access의 역할
+- 비지니스 가공 로직이 포함되면 안됨(data에 대한 CRUD에만 집중)
+- `@DataJpaTest` vs `@SpringBootTest`
+  - `@DataJpaTest`
+    - JPA 컴포넌트들만을 테스트하기 위한 어노테이션
+    - 자동으로 롤백
+    - `replace=AutoConfigureTestDatabase.Replace`가 디폴트 -> 설정한 DB가 아닌 n-memory DB를 활용
+      - `replace=AutoConfigureTestDatabase.NONE`로 설정해둔 DB 사용해 테스트 가능
+  - `@SpringBootTest`
+    - full application config을 로드해 통합 테스트 진행 위한 어노테이션
+    - 설정한 config, context, components 모두 로드
+    - DataSource bean을 그대로 사용
+    - DB 롤백되지 않아 `@Transactional` 필요
+#### Business Layer
+- 비지니스 로직 구현
+- Persistence Layer와의 상호작용 통해 비지니스 로직 전개
+- 트랜잭션 보장해야 함(작업단위 원자성 보장)
+
+
+
 ## 추가 학습 내용
 ### Lombok
 - 특징
