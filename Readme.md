@@ -105,8 +105,10 @@
   - AOP(Aspect Oriented Programming): 스프링에서 프록시 사용해서 구현
 ### JPA(Java Persistence API)
 - ORM(Object-Relational Mapping)
-  - 객체지향 패러다임 != 관계형 DB
-    - 패러다임간의 불일치 -> 기존 개발자가 직접 mapping하며 비지니스로직에 집중하기 힘듦 -> 자동으로 mapping해주도록
+  - 패러다임간의 불일치
+    - 객체는 속성(field), 기능(method) 가짐. 객체지향은 추상화, 상속, 다형성같은 개념이 있지만 DB에는 없기 때문에 서로가 지향하는 목적, 기능, 표현 방법이 다름
+      - 객체지향 패러다임 != 관계형 DB
+    - 기존 개발자가 직접 mapping하며 비지니스로직에 집중하기 힘듦 -> ORM은 자동으로 mapping 해주어 패러다임의 불일치 문제를 개발자 대신 해결
 - JPA
   - Java 진영의 ORM 기술 표준
   - 인터페이스로, 보통 Hibernate 구현체 많이 사용
@@ -114,10 +116,25 @@
   - 편리하지만 직접 쿼리 작성 안하기때문에 어떤식으로 쿼리 만들어지고 실행되는지 명확하게 이해해야함
   - Spring 진영에서는 JPA를 한번 더 추상화한 Spring Data JPA 제공
     - QueryDSL과 조합하여 많이 사용(타입체크, 동적쿼리)
+      - QueryDSL
+        - JPA만 사용할 때의 복잡한 쿼리, 동적 쿼리 구현 한계 해결
+        - 장점
+          - 문자가 아닌 코드로 쿼리 작성하여 컴파일 시점에 문법 오류 확인 가능
+          - 제약 조건 등을 메서드 추출을 통해 재사용 가능
+        - 사용 예시
+          ```java
+          String username = "test";
+          
+          List<member> result = queryFactory
+                  .select(member)
+                  .from(member)
+                  .where(usernameEq(username))
+                  .fetch();
+          ```
 - 주로 사용되는 어노테이션
   - 테이블과 객체 매핑: @Entity, @Id, @Column
   - 두 테이블(객체)간 연관관계: @ManyToOne, @OneToMany, @OneToOne, @ManyToMany
-### test 진행하기
+### Layered Architecture test
 #### 기본 세팅
 - 엔티티 별 생성, 수정일 설정
   - `@EnableJpaAuditing`: 엔티티 객체 생성되거나 수정되었을 때 자동으로 값 등록 가능, Application 클래스에 추가
@@ -159,8 +176,72 @@
 - 비지니스 로직 구현
 - Persistence Layer와의 상호작용 통해 비지니스 로직 전개
 - 트랜잭션 보장해야 함(작업단위 원자성 보장)
-- 서비스 테스트에서 @Transactional 사용 시 롤백해주어 클린업 작업 필요없지만, 실제 서비스 단계에서 @Transactional 적용안되어도 테스트 통과되기때문에 사용에 유의
+- 서비스 테스트에서 `@Transactional` 사용 시 롤백해주어 클린업 작업 필요없지만, 실제 서비스 단계에서 `@Transactional` 적용안되어도 테스트 통과되기때문에 사용에 유의
+- `@Transactional(readOnly = true)`: 읽기 전용 모드
+  - 장점
+    - 성능 최적화: 쿼리 및 캐싱 최적화 가능, 읽기 전용 설정 시 데이터 변경 일어나지 않아 변경 감지를 위한 스냅샷 저장 동작 안함
+    - 데이터 일관성: 실수로 데이터 수정해 일관성 위반할 가능성 낮아짐
+    - 가독성 향상: 설정된 메서드가 DB에서 데이터 읽기만 한다는 것 명확하게 확인 가능
+  - 주의할점
+    - `Optimistic Lock` 동작에 영향 미칠 수 있음: `@Transactional(readOnly = true)`로 설정한 메서드에 엔티티 수정 로직 있을 경우, 트랜잭션이 버전 번호 확인하지 못해 충돌 감지하지 못하고 동시에 발생한 트랜잭션 변경 사항을 덮어쓰게 되어 데이터 불일치 문제 발생 가능
+#### Presentation Layer
+- 외부 세계의 요청을 가장 먼저 받는 계층
+- 파라미터에 대한 최소한의 검증 수행
+- `@WebMvcTest` vs `@SpringBootTest`
+  - `@WebMvcTest`
+    - 컨트롤러 로직 테스트에 사용
+      - 웹 계층에 필요한 구성만 로드
+      - 특정 컨트롤러 대상으로 테스트하려면 해당 컨트롤러 클래스를 어노테이션 값으로 전달
+        ```java
+        @WebMvcTest(SomeController.class)
+        class SomeControllerTest() {
+        }
+        ```
+    - 내장된 `MockMvc` 인스턴스 사용해 HTTP 요청과 응답 쉽게 테스트 가능
+      - `MockMvc`: Mock 객체 사용해 스프링 MVC 동작 재현할 수 있는 스프링에서 제공하는 테스트 프레임워크
+        - Http 요청을 디스패처서블릿에 전송하고 결과 받아 테스트하는데 사용됨
+        ```java
+        @Autowired
+        private MockMvc mockMvc;
+        
+        @Test
+        void SomeTest() throws Exception {
+            mockMvc.perform(get("/endpoint"))
+                .andExpect(status().isOk());
+        }
+        ```
+    - `@MockitoBean` 사용해 다른 빈들 모의 객체로 생성 및 주입 가능 
+      ```java
+        @MockitoBean
+        private SomeService someService;
+        ```
+    - Mocking 메서드의 변경이 일어나면 수정 필요
+  - `@SpringBootTest`
+    - 프로젝트 내부 스프링 빈을 모두 등록 -> 테스트 속도 느림
+    - 실제 운영 환경에서 사용되는 클래스들 통합해 테스트
+      - 환경과 가장 유사하게 테스트 가능
+    - 변경에 자유로움: service 메서드 스펙 변경시에도 Mockint 값 수정 필요 없음
+    - 테스트 단위가 커 디버깅 까다로움
+- validation
+  - 분류
+    - `@NotBlank`: 공백, 빈문자열 불가
+    - `@NotNull`: 공백("  ") 가능, 빈문자열("") 가능
+    - `@NotEmpty`: 공백("  ") 가능
+    - `@Positive`: 양수 가능
 
+
+## 팁
+- request
+  - 하위 레이어는 알아야하지만 상위 레이어 알 필요 x. 상위에서 request 그대로 넘겨주면 종속성 강해짐
+    - 해당 레이어의 DTO를 따로 만들어 포맷을 맞춰 넘기는 게 좋음
+      - 레이어 간 결합도를 낮추고 독립성을 유지
+      - API 변경에 유연하게 대응 가능
+      - 서비스 로직을 명확하게 분리
+      - ex) controller: SomeRequest -> service: SomeServiceRequest 
+- validataion 책임: 컨트롤러에서 모든 조건 검증하는게 맞는가
+  - 서비스 특성에 따라 달라지는 조건 -> 서비스 레이어나 생성자 등의 안쪽 레이어에서 확인하는 게 좋음
+    - ex)`@Max(20)`
+  
 
 
 ## 추가 학습 내용
@@ -267,3 +348,245 @@
     - BDD 스타일의 테스트를 원하는 경우
     - 간결하고 가독성 높은 테스트 코드를 작성
     - 내장된 Mocking 기능을 사용
+
+### Architecture
+- Layered Architecture(계층형 아키텍처)
+  - 전통적 아키텍처
+  - 같은 목적의 코드들을 같은 계층으로 그룹화
+  - 역할과 관심사를 계층으로 분리하여 코드의 모듈화와 재사용성을 높임
+  - Layer:
+    - Presentation Layer (UI 계층): 사용자 인터페이스 처리
+    - Application Layer (서비스 계층): 비즈니스 로직 수행
+    - Domain Layer (도메인 계층): 핵심 비즈니스 규칙 및 도메인 모델
+    - Infrastructure Layer (영속성 계층): 데이터베이스, 외부 API와 통신
+- Clean Architecture(클린 아키텍처)
+  - 애플리케이션의 핵심 도메인이 외부 요소(DB, UI, 프레임워크 등)에 의존하지 않도록 하는 아키텍처
+  - 모든 의존성은 바깥쪽에서 안쪽으로 향해야 함
+  - 하나의 추상적 이론이므로 현업에 적용하기 어려움, 개발 복잡성이 증가할 수 있음
+- Hexagonal Architecture(헥사고날 아키텍처, Ports and Adapters 패턴)
+  - 클린 아키텍처를 실제로 구현하는 대표적인 모델
+  - 애플리케이션 코어(비즈니스 로직)가 외부 기술(데이터베이스, UI, 메시징 등)에 직접 의존하지 않도록 함
+  - `포트(Port)`와 `어댑터(Adapter)`를 사용하여 의존성을 분리
+    - 포트(Port): 애플리케이션 내부에서 제공하는 인터페이스 (ex: UserRepository, PaymentGateway)
+    - 어댑터(Adapter): 포트를 구현하여 실제 외부 기술과 연결 (ex: JpaUserRepository, StripePaymentGateway)
+  - Layer
+    - Domain Layer (도메인 계층, 가장 안쪽)
+      - 순수한 비즈니스 로직과 엔티티
+      - 외부 프레임워크나 데이터베이스를 전혀 몰라야 함
+    - Application Layer (애플리케이션 계층, 중간 계층)
+      - 유스케이스(Use Case)를 정의 (ex: UserService, OrderService)
+      - 도메인 계층을 호출하여 애플리케이션의 흐름을 제어
+      - 포트(Port) 인터페이스를 제공하여 외부와의 상호작용을 정의
+    - Adapter Layer (어댑터 계층, 가장 바깥쪽)
+      - 데이터베이스, 웹 API, UI 등 외부 시스템과 통신
+      - 도메인과 애플리케이션 계층이 특정 기술에 종속되지 않도록 함
+    - 장점
+     - 유연성: 기술 스택이 바뀌어도 코어 로직을 변경하지 않고 새로운 어댑터만 추가하면 됨
+     - 유지보수성: 코드가 명확하게 분리되어 있어 변경이 용이함
+     - 테스트 용이성: 각 컴포넌트 독립적 테스트 가능, 외부 의존성 없이 테스트 가능
+    
+### Lock
+- DB에 접근하여 데이터를 수정할 때, 여러 트랜잭션이 동시에 같은 데이터를 수정하면 충돌이 발생할 수 있음. 이를 방지하기 위해 Lock 사용
+- Optimistic Lock
+  - 기본적으로 데이터 갱신시 충돌이 발생하지 않을 것이라고 낙관적으로 보는 락 -> 우선적으로 락 걸지 X
+  - DB가 제공하는 락 기능 사용하지 않고 application level(JPA 등)에서 잡아줌
+  - 버전 번호(version) 필드 사용하여 충돌 감지
+  - 트랜잭션이 필요하지 않음 → 성능이 좋음
+    - 충돌이 빈번한 경우 오히려 성능이 낮아질 수 있음
+  - 충돌 발생 시 롤백을 개발자가 직접 처리해야 하므로 비관적 락보다 불리
+  - JPA에서의 동작
+    1. 엔티티에 @Version 필드 추가 (version 컬럼 활용)
+    2. 트랜잭션이 커밋될 때, UPDATE 실행 시 현재 버전과 DB 버전을 비교
+       - 버전이 같으면: 업데이트 성공 후, 버전 번호 +1 증가
+       - 버전이 다르면: 업데이트할 대상이 없으므로 JPA가 `OptimisticLockException` 발생
+    3. 충돌 발생 시 롤백을 개발자가 직접 처리해야 함
+- Pessimistic Lock
+  - 기본적으로 데이터 갱신시 충돌이 발생할 것이라고 비관적으로 보고 미리 잠금을 거는 락 -> 우선적으로 락 걸음
+  - DB가 제공하는 락 기능을 사용
+  - 트랜잭션이 시작될 때 Shared Lock 또는 Exclusive Lock을 걸고 시작
+  - 충돌이 발생하면 트랜잭션이 실패하며 자동으로 롤백됨
+  - 장점
+    - 트랜잭션 충돌을 미리 방지할 수 있음 (Optimistic Lock처럼 예외 발생 후 롤백할 필요 없음)
+    - 데이터 정합성이 보장됨
+  - 단점
+    - 성능 저하 가능성 (락을 걸면 다른 트랜잭션이 해당 데이터를 사용할 수 없음 → 동시성이 낮아짐)
+    - 데드락 발생 가능성 (여러 트랜잭션이 서로를 기다리면서 무한 대기 상태)
+  - JPA에서의 동작
+    - `@Lock(LockModeType.PESSIMISTIC_WRITE)`을 사용하여 락을 설정
+
+### CQRS (Command and Query Responsibility Segregation)
+- command와 query를 분리하는 패턴
+  - Command: 데이터 저장소에 데이터 쓰기
+  - Query: 데이터 저장소로부터 데이터 읽기
+- 방식 비교
+  - CQRS 따르지 x API
+    ```Markdown
+    # POST /posts
+    
+    1. post를 DB에 업로드
+    2. 방금 업로드한 post를 DB에서 조회
+    3. 조회된 post 정보 반환
+    ```
+  - CQRS 따르는 API
+    ```Markdown
+    # POST /posts
+    
+    1. post를 DB에 업로드
+    2. 방금 업로드한 post의 ID 반환
+    
+    # GET /post/{post_id}
+    1. id를 통해 post 조회
+    2. 조회된 post 반환
+    ```
+  - 사용자가 별도로 조회해야하는 번거로움 -> Post-Redirect-Get(PRG) 패턴 사용
+    - PRG : web 개발 분야에서 권장되는 디자인 패턴
+      - POST 요청 후 응답 오면 곧바로 GET 요청
+- 장점
+  - 성능: 읽기 작업과 쓰기 작업 각각 최적화 가능
+  - 확장성: 작업 빈도 놏은 읽기 전용 DB나 서버 두는 것 가능
+- 단점
+  - 일관성 문제: 읽기 전용 테이블이 항상 최신 정보임 보장 X
+
+### 예외처리
+- `@ControllerAdvice`, `@RestControllerAdvice`
+  - Spring에서 애플리케이션 전체에 대해 전역적으로 예외를 처리할 수 있는 어노테이션
+  - 종류
+    - `@ControllerAdvice`: `@Controller`와 `@RestController`에서 발생하는 예외를 처리하는 데 사용
+    - `@RestControllerAdvice`
+      - 모든 `@RestController`에서 발생한 예외를 한 곳에서 처리할 수 있도록 도와주는 어노테이션
+      - RESTful API 응답에 적합한 방식으로 예외를 처리, `@ResponseBody`가 포함되어 있어, 반환되는 값이 JSON 형태로 응답
+  - 특징
+    - 여러 컨트롤러에서 발생하는 예외를 한 곳에서 처리하기 때문에 코드 중복을 줄이고, 관리가 용이
+- `@ExceptionHandler`
+  - 특정 예외를 처리하는 메서드에 붙이는 어노테이션
+  - 개별 컨트롤러 내에서 예외를 처리하는 데 사용
+    - `@Controller` 또는 `@RestController 내에서 사용
+
+### ObjectMapper
+- Java에서 객체와 JSON 사이의 변환을 도와주는 클래스
+  - Spring boot에서는 Jackson 라이브러리가 기본적으로 추가되어 별도의 의존성 추가 없이 사용 가능
+- 직렬화(Serialization): Java 객체 -> JSON 변환 
+  - `writeValueAsString()` 사용
+  - 주의사항
+    getter 메소드 규칙: Jackson은 기본적으로 JavaBean 규약에 따라 getter 메서드를 찾아서 JSON 필드를 바인딩. 만약 잘못된 getter 메서드 생성시 예상치 못한 JSON 응답이 발생 가능
+- 역직렬화(Deserialization):JSON -> Java 객체 변환 
+  - 과정
+    1. 기본 생성자로 객체 생성
+    2. 필드값 찾아 값 바인딩
+  - 기본 생성자 사용없이 객체 만들기
+    - ObjectMapper에 ParameterNames 모듈 추가
+    - Java 컴파일의 `-parameters` 옵션 추가
+
+### Test Double
+- 테스트 대상 객체와 협력하는 객체를 대체할 수 있도록 만들어진 객체
+- 테스트 환경에서 원래 객체를 사용하기 어려운 경우(예: 데이터베이스 연동, 네트워크 요청 등) 이를 대신해서 사용
+- 종류
+  - Dummy
+    - 동작하지 않아도 테스트에는 영향 미치지 않는 객체 
+    - 인스턴스화 된 객체 필요하지만 기능 필요하지 않은 경우에 사용
+    - 메서드를 호출해도 아무 일도 하지 않거나, null, 기본값 등을 반환
+    ```java
+    public class DummyEmailSender implements EmailSender {
+        @Override
+        public void sendEmail(String to, String message) {
+            // 아무 동작도 하지 않음 (단순히 인스턴스가 필요할 뿐)
+        }
+    }
+    ```
+  - Fake
+    - 일부 실제 동작을 하지만, 정교하지 않은 객체
+    - 복잡한 로직이나 객체 내부에서 필요로 하는 다른 외부 객체들의 동작 단순화하여 구현
+      보통 인메모리 DB, 간단한 로직을 포함하는 테스트용 객체로 사용
+    ```java
+    public class FakeUserRepository implements UserRepository {
+        private Map<Long, User> database = new HashMap<>();
+
+        @Override
+        public void save(User user) {
+            database.put(user.getId(), user);
+        }
+
+        @Override
+        public User findById(Long id) {
+            return database.get(id); // 실제 DB 대신 메모리에서 데이터 반환
+        }
+    }
+    ```
+  - Stub
+    - 미리 정해진 값을 반환하도록 구현된 객체
+    - 인터페이스 또는 기본 클래스가 최소한으로 구현된 상태
+    - 특정 요청이 들어오면, 미리 준비된 응답을 반환하도록 동작
+    ```java
+    public class StubWeatherService implements WeatherService {
+        @Override
+        public String getWeather(String location) {
+            return "Sunny"; // 항상 "Sunny" 반환 (테스트를 위해 하드코딩된 응답)
+        }
+    }
+    ```
+    - `Mockito` 프레임워크의 `when()` 메서드가 수행하는 역할
+       ```java
+       WeatherService mockService = mock(WeatherService.class);
+       when(mockService.getWeather("Seoul")).thenReturn("Sunny");
+       ```
+  - Spy
+    - Stub과 비슷하지만, 추가적으로 호출된 기록을 저장할 수 있는 객체
+    - 실제 객체처럼 동작시킬 수 있고, 필요한 부분에 대해서는 stub으로 만들어 동작 지정 가능
+    - 호출 횟수나 특정 메서드 호출 여부를 검증할 때 유용
+     ```java
+     public class SpyPaymentService implements PaymentService {
+        private boolean called = false;
+
+        @Override
+        public void processPayment(double amount) {
+            called = true; // 호출 기록 남김
+        }
+    
+        public boolean wasCalled() {
+            return called;
+        }
+    }
+    ```
+    - `Mockito` 프레임워크의 `verify()` 메서드가 수행하는 역할
+       ```java
+      PaymentService spyService = spy(new RealPaymentService());
+      spyService.processPayment(100.0);
+  
+      verify(spyService).processPayment(100.0); // 호출 여부 검증
+       ```
+  - Mock
+    - 행동을 미리 정의하고, 특정 호출이 예상대로 이루어졌는지 검증하는 객체
+    - Stub과 달리, 기대하는 동작을 명시적으로 설정 가능
+    - 보통 Mock 프레임워크(Mockito, EasyMock)를 사용하여 생성
+     ```java
+    UserRepository mockRepo = mock(UserRepository.class);
+    when(mockRepo.findById(1L)).thenReturn(new User(1L, "Alice"));
+
+    User user = mockRepo.findById(1L); // 미리 정의된 결과 반환
+    verify(mockRepo).findById(1L); // findById(1L) 호출 여부 검증
+    ```
+#### Mockito
+- Java에서 Mock 객체를 쉽게 생성하고 관리할 수 있도록 도와주는 프레임워크
+- JUnit과 함께 자주 사용되며, 가짜 객체(Mock)를 생성하고 동작을 설정하는 데 유용
+- Mock
+  - Mock 객체 생성법
+    - `UserRepository mockRepo = mock(UserRepository.class);`
+    - ```java
+      @Mock
+      private UserRepository userRepository;
+      ```
+- MockitoBean
+  - Spring Context에서 기존 빈(Bean)을 대체하여 Mock 객체를 생성
+  - @Autowired로 주입받을 수 있으며, 스프링의 DI(의존성 주입)를 활용한 테스트 가능
+  - Spring Context에 등록된 원래의 빈을 대체하기 때문에, 실제 애플리케이션의 동작을 테스트하는 데 유용
+- 자주 사용하는 메서드
+
+  | 메서드 | 설명 |
+  |--------|------|
+  | `mock(Class<T> classToMock)` | 지정된 클래스의 Mock 객체 생성 |
+  | `when(mock.method()).thenReturn(value)` | 특정 메서드 호출 시 지정한 값 반환 |
+  | `doReturn(value).when(mock).method()` | `when()`과 유사하지만 Void 메서드에도 사용 가능 |
+  | `verify(mock).method()` | 특정 메서드가 호출되었는지 검증 |
+  | `verify(mock, times(n)).method()` | 메서드 호출 횟수 검증 |
+  | `spy(realObject)` | 실제 객체의 일부 동작만 변경 |
+  | `doNothing().when(mock).method()` | 메서드 호출 시 아무 동작도 하지 않도록 설정 |
