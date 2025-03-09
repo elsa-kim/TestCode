@@ -30,6 +30,7 @@ import static sample.cafekiosk.spring.domain.product.ProductType.HANDMADE;
 public class ProductService {
 
     private final ProductRepository productRepository;
+    private final ProductNumberFactory productNumberFactory;
 
     // 동시성 이슈
     // unique 설정 후 재시도 자동으로(빈도수 낮으면 시스템에서 재시도)
@@ -38,7 +39,7 @@ public class ProductService {
     public ProductResponse createProduct(ProductCreateServiceRequest request) {
         // productNumber: 001 002 003 004
         // DB에서 마지막 저장된 Product의 상품 번호를 읽어와서 +1
-        String nextProductNumber = createNextProductNumber();
+        String nextProductNumber = productNumberFactory.createNextProductNumber();
 
         Product product = request.toEntity(nextProductNumber);
         Product savedProduct = productRepository.save(product);
@@ -54,16 +55,5 @@ public class ProductService {
                 .collect(Collectors.toList());
     }
 
-    private String createNextProductNumber() {
-        String latestProductNumber = productRepository.findLatestProduct();
 
-        if(latestProductNumber == null){
-            return "001";
-        }
-
-        int latestProductNumberInt = Integer.parseInt(latestProductNumber);
-        int nextProductNumberInt = latestProductNumberInt + 1;
-
-        return String.format("%03d", nextProductNumberInt);
-    }
 }

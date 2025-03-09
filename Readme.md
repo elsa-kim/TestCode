@@ -254,6 +254,123 @@
       - 실제 객체와 다르게 동작할 수 있어 Mock이 현실성을 잃을 수 있음
       - Mock 설정이 많아질 경우 테스트 코드 유지보수가 어려워질 수 있음
 
+### 더 나은 테스트 작성하기
+#### 테스트 하나당 목적은 하나
+논리구조(분기문, 반복문)이 있다면 하나의 테스트에 여러가지 경우가 들어가 있다는 것 -> 코드 읽을 때 한번 더 생각해야함 -> 지양하기
+  - Parameterized 사용하기
+#### 완벽한 제어
+제어할 수 없는 값은 상위 레벨로 분리하여 상황 제어하기(ex. 날짜, 시간 등에 따라 테스트 성공 여부 바뀔때)
+- 계속 완벽하게 제어할 수 있는가 생각하기
+- `LocalDateTime.now()`처럼 제어 불가능한 값 사용하지 말기
+  - 고정된 값으로 설정하기
+#### 테스트 환경의 독립성을 보장하자
+하나의 테스트 내에서의 독립성
+- ex) 주문 생성 테스트에서 재고 차감도 진행 시
+  - 맥락 이해 과정 필요, 해당 기능에 문제 생겼을 때 
+- 테스트 실패는 when, then에서 이뤄져야 함
+  - given에서 실패 시 유추하기 어려움 
+    - 테스트 환경 구성 시 given에서는 순수 생성자나 순수 빌더로만
+#### 테스트 간 독립성을 보장하자
+두 개 이상의 테스트 간 독립성
+- 자원 공유 시 테스트 순서에 따라 성공 여부 달라질 수 있음
+  - 순서에 따라 성공 여부 달라지면 안됨
+- 공유 자원 사용하지 말기
+  - 변화 필요한 경우 Dynamic test 사용
+#### 한 눈에 들어오는 Test Fixture 구성하기
+- Test Fixture: 테스트를 위해 원하는 상태로 고정시킨 일련의 객체
+  - given절에 구성
+- 공통의 Fixture setup 지양
+  - 수정 시 어떻게 달라질지 모름
+  - 파편화 되어 문서로의 역할 어려움
+- `@BeforeEach setUp()` 사용 시
+  - 각 테스트 입장에서 봤을 때 아예 몰라도 테스트 내용을 이해하는 데에 문제가 없는가
+  - 수정해도 모든 테스트에 영향 주지 않는가
+- `data.sql`에서 given 구성 지양
+  - 파편화되어 무엇을 테스트하는지 파악하기 어려워짐
+  - 프로젝트 커질수록 관리하기 힘듦
+- 빌더 생성 시 파라미터에는 테스트클래스에서 필요한 것들만 남기기
+  - ex) 상품명 중요하지 않음 -> 파라미터에서 제거, 텍스트로 직접 집어넣기
+- fixture builder들 한곳에 모아 관리하는 것 지양
+  - 테스트 클래스마다 필요한 필드만 뽑아 사용하는 것이 좋음
+#### Test Fixture 클렌징
+`deleteAllInBatch()` vs `deleteAll()`
+- `deleteAllInBatch()`: 성능이 중요하고 테이블 단순 삭제가 필요할 때
+  - `DELETE FROM 테이블명` 단일 SQL 실행 → 성능이 뛰어남
+  - 영속성 컨텍스트를 무시 → JPA의 findAll() 등으로 가져온 엔티티가 아직 영속성 컨텍스트에 있더라도 반영되지 않음
+  - 외래 키(FK) 있는 경우, 삭제 순서를 명확히 고려해야 함
+- `deleteAll()`: 연관된 데이터를 함께 삭제해야 할 때
+  - `SELECT`로 전체 엔티티를 조회 후, 개별적으로 `DELETE` 실행
+  - 연관 관계를 자동으로 찾아가면서 삭제
+  - `CascadeType.REMOVE`가 설정된 경우, 연관된 엔티티도 삭제
+    - 성능이 낮을 수 있음 (대량 데이터 삭제 시 비효율적)
+#### `@ParameterizedTest`
+하나의 테스트에서 값이나 환경에 대한 data 바꿔가며 테스트 진행하고 싶을 때
+- 종류
+  - `@ValueSource`: 하나의 값만 넣을 수 있음 (기본 타입 또는 문자열 가능)
+    - 지원 타입: int, long, double, short, byte, char, boolean, String, Class<?>
+    - ex) `@ValueSource(ints = {1, 2, 3, 4, 5})`
+  - `@CsvSource`: 쉼표(,)로 구분된 여러 값을 넣을 수 있음
+    - ex) `@CsvSource({"1, apple", "2, banana", "3, cherry"})`
+  - `@CsvFileSource`: CSV 파일에서 데이터를 가져와 테스트 진행
+    - ex) `@CsvFileSource(resources = "/data.csv", numLinesToSkip = 1)`
+      - numLinesToSkip = 1 : 첫 번째 줄(헤더) 스킵
+  - `@MethodSource`: 메서드에서 데이터를 생성하여 테스트, 더 복잡한 데이터 구조 (객체 등)도 활용 가능
+    - ex)
+    ```java
+    static Stream<Arguments> provideStringsForTest() {
+        return Stream.of(
+            Arguments.of("apple", 5),
+            Arguments.of("banana", 6),
+            Arguments.of("cherry", 6)
+        );
+    }
+    
+    @ParameterizedTest
+    @MethodSource("provideStringsForTest")
+    void testWithMethodSource(String word, int length) {
+        assertEquals(word.length(), length);
+    }
+    ```
+    - 데이터를 동적으로 생성할 때 유용
+  - `@EnumSource`: Enum 값들을 테스트할 때 사용
+    - ex)
+    ```java
+    enum Fruit { APPLE, BANANA, CHERRY }
+
+    @ParameterizedTest
+    @EnumSource(Fruit.class)
+    void testWithEnumSource(Fruit fruit) {
+        assertNotNull(fruit);
+    }
+    
+    // 특정 값만 테스트할 수도 있음
+    @ParameterizedTest
+    @EnumSource(value = Fruit.class, names = {"APPLE", "CHERRY"})
+    void testWithSpecificEnumValues(Fruit fruit) {
+        assertNotNull(fruit);
+    }
+    ```
+#### `@DynamicTest`
+사용자 시나리오 테스트 할 때(환경 변화주며) 유용 
+- `@Test` 대신 `@TestFactory` 선언
+#### 테스트 수행도 비용이다. 수행 환경 통합하기
+- 환경(profiles)이 다르면 → Spring Context가 새로 로드됨
+- @MockBean이 있는 경우 → Application Context가 새로 생성됨
+  - 처리 방법
+    - 상위 클래스로 옮기기
+      - `@MockBean`을 공통 부모 클래스로 옮기면 모든 하위 테스트에서 mock이 적용됨
+    - 특정 테스트에서만 mock이 필요하다면 별도 환경으로 분리하는 것이 더 적절
+- @DataJpaTest와 @SpringBootTest를 함께 사용 → 서로 다른 Context를 로드하기 때문에 서버가 따로 뜸
+  - @SpringBootTest로 통일하면 불필요한 컨텍스트 중복 생성을 방지
+  - @DataJpaTest는 가벼운 테스트에 적합하므로, 모든 테스트를 @SpringBootTest로 통일하면 오히려 성능이 떨어질 수 있음
+#### private 메서드 테스트
+할 필요 없음. 해야할 이유도 없음
+- 클라이언트 입장에선 공개 API만 알면 됨(= public API, method만 공개하고 싶다)
+  - private test 하지 않아도 자연스럽게 검증됨
+- test 욕망이 강하면 객체를 분리할 시점인가 고민하기
+#### 테스트에서만 필요한 메서드 생겼는데 프로덕션 코드에서는 필요 없다면?
+만들어도 되지만 보수적으로 접근하기
+
 
 ## 팁
 - request

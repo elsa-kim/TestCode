@@ -6,6 +6,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Transactional;
+import sample.cafekiosk.spring.IntegrationTestSupport;
 
 import java.util.Collection;
 import java.util.List;
@@ -16,10 +18,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static sample.cafekiosk.spring.domain.product.ProductSellingStatus.*;
 import static sample.cafekiosk.spring.domain.product.ProductType.HANDMADE;
 
-@ActiveProfiles("test")
-//@SpringBootTest
-@DataJpaTest // JPA 관련 bean들만 주입해줘서 서버 띄움 -> 속도 빠름, 자동 롤백
-class ProductRepositoryTest {
+@Transactional
+class ProductRepositoryTest extends IntegrationTestSupport {
 // repository test는 단위테스트와 유사
     @Autowired
     private ProductRepository productRepository;
