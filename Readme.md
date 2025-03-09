@@ -229,6 +229,31 @@
     - `@NotEmpty`: 공백("  ") 가능
     - `@Positive`: 양수 가능
 
+### Mock
+- stub vs mock
+  - stub: 상태 검증(state verification)
+  - mock: 행위 검증(behavior verification)
+- Classicist vs Mockist
+  - 단위 테스트 스타일에 대한 두 가지 대조적인 접근 방식
+  - Classicist
+    - 시스템 전체가 통합되었을 때 제대로 동작하는가
+    - Mock을 거의 사용하지 않음, 대신 실제 객체 사용
+    - 장점
+      - 예상치 못한 버그 발견 가능
+    - 단점
+      - 의존성이 많을때 단위 테스트가 느려질 수 있음
+      - 여러 모듈을 함께 테스트할 경우 문제가 발생했을 때 원인을 찾기 어려움
+  - Mockist
+    - 각 객체가 올바르게 협력하는가 중시
+    - 의존성 있는 객체를 Mock으로 대체하여 단위 테스트 독립성 유지
+    - 장점
+      - 테스트 속도가 빠름
+      - 문제 발생 시 버그 원인을 더 쉽게 찾을 수 있음
+      - 개별 컴포넌트를 독립적으로 테스트 가능
+    - 단점
+      - 실제 객체와 다르게 동작할 수 있어 Mock이 현실성을 잃을 수 있음
+      - Mock 설정이 많아질 경우 테스트 코드 유지보수가 어려워질 수 있음
+
 
 ## 팁
 - request
@@ -241,6 +266,7 @@
 - validataion 책임: 컨트롤러에서 모든 조건 검증하는게 맞는가
   - 서비스 특성에 따라 달라지는 조건 -> 서비스 레이어나 생성자 등의 안쪽 레이어에서 확인하는 게 좋음
     - ex)`@Max(20)`
+
   
 
 
@@ -570,11 +596,17 @@
 - JUnit과 함께 자주 사용되며, 가짜 객체(Mock)를 생성하고 동작을 설정하는 데 유용
 - Mock
   - Mock 객체 생성법
-    - `UserRepository mockRepo = mock(UserRepository.class);`
-    - ```java
+    - `mock()` 사용
+      - `UserRepository mockRepo = mock(UserRepository.class);`
+    - `@Mock` 사용
+      - 클래스 상단 `@ExtendWith(MockitoExtension.class)` 명시
+      ```java
       @Mock
       private UserRepository userRepository;
       ```
+  - `@InjectMocks` : DI와 같은 역할
+    - 테스트 대상 클래스에 대해 생성자 주입, 세터 주입, 필드 주입 등을 자동으로 처리
+    - @Mock으로 만들어진 객체를 해당 클래스의 생성자나 필드에 주입하는 방식으로 작동
 - MockitoBean
   - Spring Context에서 기존 빈(Bean)을 대체하여 Mock 객체를 생성
   - @Autowired로 주입받을 수 있으며, 스프링의 DI(의존성 주입)를 활용한 테스트 가능
@@ -590,3 +622,8 @@
   | `verify(mock, times(n)).method()` | 메서드 호출 횟수 검증 |
   | `spy(realObject)` | 실제 객체의 일부 동작만 변경 |
   | `doNothing().when(mock).method()` | 메서드 호출 시 아무 동작도 하지 않도록 설정 |
+
+#### BDDMockito
+- BDD(Behavior-Driven Development, 행동 주도 개발) 스타일의 테스트 작성을 지원하는 Mockito 확장 기능
+- 기존의 Mockito의 `when()` 스타일 대신 더 읽기 쉬운 Given-When-Then 형식으로 테스트를 작성할 수 있도록 도움
+  - `when().thenReturn()` 대신 `given().willReturn()`을 사용
